@@ -17,7 +17,7 @@ Widgetissä on myös henkilökunnan ylläpitonäkymä. Sitä ei käytetä eikä 
 ## Tiedostot
 
 - `scraper.py`: hakee tilanteen ja lisää rivin `data/queue.csv`:hen vain, jos tilanne on muuttunut. Vain standardikirjasto.
-- `.github/workflows/scrape.yml`: cron `*/5 * * * *` ja manuaaliajo. Commitoi `data/queue.csv`:n, jos se muuttui.
+- `.github/workflows/scrape.yml`: vain `workflow_dispatch`. Ajastus tulee ulkoisesta cron-palvelusta, joka kutsuu GitHubin API:a (`POST /repos/entsukki/gr-trendi/actions/workflows/scrape.yml/dispatches`, body `{"ref":"main"}`) 5 min välein fine-grained tokenilla (Actions: write, vanhenee 31.12.2026). Commitoi `data/queue.csv`:n, jos se muuttui.
 
 - `index.html`: yksittäinen staattinen sivu (ei build-vaihetta, ei riippuvuuksia), joka lukee `data/queue.csv`:n selaimessa. Näyttää nykytilan, lämpökartan (viikonpäivä × kellonaika), kiireisimmät ja rauhallisimmat ajat ja 3 vrk aikajanan. Julkaistavissa GitHub Pagesilla repon juuresta.
 
@@ -41,8 +41,7 @@ macOS:n python.org-Pythonilla voi tulla `CERTIFICATE_VERIFY_FAILED`. Korjaus pai
 
 ## Huomioita
 
-- GitHub Actionsin 5 minuutin cron ei ole tarkka, ajot voivat viivästyä tai jäädä väliin.
-- GitHub poistaa ajastetut workflowt käytöstä, jos repossa ei ole 60 päivään aktiviteettia. Jos data ei muutu pitkään aikaan eikä botti commitoi, workflow voi sammua. Tarkista Actions-välilehti, jos tallennus näyttää pysähtyneen.
+- Jos data lakkaa kertymästä, tarkista ensin cron-palvelun ajot ja tokenin voimassaolo (vanhenee 31.12.2026, API palauttaa silloin 401).
 - Sivusto on auki joka päivä 11–20. Suljettuna `closed` on true.
 
 ## Konventiot

@@ -1,8 +1,7 @@
 name: Scrape queue
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  # Ajastus tulee ulkoisesta cron-palvelusta, joka kutsuu workflow_dispatch-API:a 5 min välein.
   workflow_dispatch:
 
 permissions:
