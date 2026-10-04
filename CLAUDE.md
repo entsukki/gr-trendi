@@ -16,10 +16,17 @@ Widgetissä on myös henkilökunnan ylläpitonäkymä. Sitä ei käytetä eikä 
 
 ## Tiedostot
 
-- `scraper.py`: hakee tilanteen ja lisää rivin `data/queue.csv`:hen vain, jos tilanne on muuttunut. Vain standardikirjasto.
+- `scraper.py`: hakee tilanteen ja lisää rivin `data/queue.csv`:hen vain, jos tilanne on muuttunut. Aukioloajan ulkopuolella API:a ei kutsuta, vaan kirjataan yksi `Suljettu`-rivi. Vain standardikirjasto.
 - `.github/workflows/scrape.yml`: vain `workflow_dispatch`. Ajastus tulee ulkoisesta cron-palvelusta, joka kutsuu GitHubin API:a (`POST /repos/entsukki/gr-trendi/actions/workflows/scrape.yml/dispatches`, body `{"ref":"main"}`) 5 min välein fine-grained tokenilla (Actions: write, vanhenee 31.12.2026). Commitoi `data/queue.csv`:n, jos se muuttui.
 
 - `index.html`: yksittäinen staattinen sivu (ei build-vaihetta, ei riippuvuuksia), joka lukee `data/queue.csv`:n selaimessa. Näyttää nykytilan, lämpökartan (viikonpäivä × kellonaika), kiireisimmät ja rauhallisimmat ajat ja 3 vrk aikajanan. Julkaistavissa GitHub Pagesilla repon juuresta.
+
+## Aukioloaika
+
+Grillroom.fi:n etusivun mukaan avoinna **joka päivä 11–20** (Suomen aikaa; muita aikoja tai poikkeuksia ei sivustolla ole). Vakiot: `OPEN_HOUR`/`CLOSE_HOUR` sekä `scraper.py`:ssä että `index.html`:ssä. Muuta molemmat, jos ajat muuttuvat.
+
+- Scraper: suljettuna ei API-kutsua. Ensimmäinen suljettu-ajo kirjaa rivin `closed=True, time=Suljettu`, jotta avautuessa ensimmäinen havainto kirjautuu aina uutena rivinä (CSV sisältää vain muutokset).
+- Sivu: havainnot rajataan aukioloon myös lukuhetkellä, joten vanhat tai virheelliset yörivit eivät vaikuta tuloksiin. Lämpökartassa on vain tunnit 11–20. Nykytila näyttää suljettuna "Suljettu" ja avautumisajan.
 
 ## Sivun laskentalogiikka
 
@@ -42,7 +49,6 @@ macOS:n python.org-Pythonilla voi tulla `CERTIFICATE_VERIFY_FAILED`. Korjaus pai
 ## Huomioita
 
 - Jos data lakkaa kertymästä, tarkista ensin cron-palvelun ajot ja tokenin voimassaolo (vanhenee 31.12.2026, API palauttaa silloin 401).
-- Sivusto on auki joka päivä 11–20. Suljettuna `closed` on true.
 
 ## Konventiot
 

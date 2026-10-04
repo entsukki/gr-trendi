@@ -148,6 +148,7 @@ const CSV_URL = DEMO ? 'data/demo.csv' : 'data/queue.csv';
 const TZ = 'Europe/Helsinki';
 const STEP = 5 * 60e3;          // havaintoväli
 const MAX_CARRY = 6 * 3600e3;   // tilaa ei venytetä yli 6 h viimeisestä muutoksesta (data kirjataan vain muutoksista)
+const OPEN_HOUR = 11, CLOSE_HOUR = 20; // aukiolo joka päivä 11-20 (grillroom.fi), Suomen aikaa
 const MIN_SAMPLES = 6;          // vähintään ~30 min havaintoja, ennen kuin solu lasketaan
 const WD = ['Ma','Ti','Ke','To','Pe','La','Su'];
 const WD_LONG = ['maanantai','tiistai','keskiviikko','torstai','perjantai','lauantai','sunnuntai'];
@@ -210,7 +211,8 @@ function buildSamples(rows, from, to) {
     const v = minutes(r);
     if (v == null) continue;
     const [wd, h] = local(t);
-    out.push({t, wd, h, v});
+    if (h < OPEN_HOUR || h >= CLOSE_HOUR) continue; // suljettuna API:n tuloksia ei huomioida
+    out.push({t, wd, h, v, row: r});
   }
   return out;
 }
@@ -256,16 +258,31 @@ function seqColor(t, stops) {
 /* ---------- osiot ---------- */
 function sectionNow(rows) {
   const r = rows[rows.length - 1], card = el('section', 'card');
+  const now = Date.now(), [, h] = local(now);
+  const closedNow = h < OPEN_HOUR || h >= CLOSE_HOUR;
+  const unavailable = closedNow || r.closed || !r.available;
+  const waiting = !closedNow && r.closed && now - r.ts > (h - OPEN_HOUR + 1) * 3600e3; // vanha "suljettu"-rivi ennen avautumista
   const g = el('div', 'now');
-  const unavailable = r.closed || !r.available;
-  g.append(el('div', 'hero', unavailable ? (r.closed ? 'Kiinni' : '–') : r.time));
+  g.append(el('div', 'hero', closedNow || (r.closed && !waiting) ? 'Suljettu' : unavailable ? '–' : r.time));
   const side = el('div');
   const lbl = el('div', 'lbl'); const dot = el('span', 'dot');
   if (STATUS_COLOR[r.color] && !unavailable) dot.style.background = STATUS_COLOR[r.color];
-  lbl.append(dot, el('span', null, unavailable ? (r.closed ? 'Ravintola on suljettu' : 'Arviota ei ole saatavilla') : stripEmoji(r.label)));
+  let text;
+  if (closedNow) text = h < OPEN_HOUR ? `Avautuu tänään klo ${OPEN_HOUR}` : `Avautuu huomenna klo ${OPEN_HOUR}`;
+  else if (waiting) text = 'Odotetaan päivän ensimmäistä arviota';
+  else if (r.closed) text = 'Ravintola on suljettu';
+  else if (!r.available) text = 'Arviota ei ole saatavilla';
+  else text = stripEmoji(r.label);
+  lbl.append(dot, el('span', null, text));
   side.append(lbl);
-  if (r.hint && !unavailable) side.append(el('div', 'meta', r.hint));
-  side.append(el('div', 'meta', `Tila muuttunut ${rel(Date.now() - r.ts)} (${fmtDateTime.format(r.ts)})`));
+  if (closedNow) {
+    side.append(el('div', 'meta', `Avoinna joka päivä ${OPEN_HOUR}–${CLOSE_HOUR}. Jonotilannetta ei seurata suljettuna aikana.`));
+    const last = [...rows].reverse().find(x => minutes(x) != null);
+    if (last) side.append(el('div', 'meta', `Viimeisin arvio: ${last.time} (${fmtDateTime.format(last.ts)})`));
+  } else {
+    if (r.hint && !unavailable) side.append(el('div', 'meta', r.hint));
+    side.append(el('div', 'meta', `Tila muuttunut ${rel(now - r.ts)} (${fmtDateTime.format(r.ts)})`));
+  }
   g.append(side); card.append(g);
   return card;
 }
@@ -366,18 +383,12 @@ function sectionBars(agg, hours) {
 
 function sectionTimeline(rows) {
   const card = el('section', 'card');
-  card.append(el('h2', null, 'Viimeiset 3 vuorokautta'), el('p', 'hint', 'Jonotusarvion keskikohta ajan mukaan. Katkos = suljettu.'));
+  card.append(el('h2', null, 'Viimeiset 3 vuorokautta'), el('p', 'hint', `Jonotusarvion keskikohta ajan mukaan. Katkos = suljettu (avoinna ${OPEN_HOUR}–${CLOSE_HOUR}).`));
   const now = Date.now(), t0 = now - 3 * 86400e3;
-  const segs = [];
-  rows.forEach((r, i) => {
-    const v = minutes(r); if (v == null) return;
-    const next = i + 1 < rows.length ? rows[i + 1].ts : now;
-    const a = Math.max(r.ts, t0), b = Math.min(next, r.ts + MAX_CARRY, now);
-    if (b > t0 && b > a) segs.push({a, b, v, r});
-  });
-  if (!segs.length) { card.append(el('div', 'err', 'Ei havaintoja viimeiseltä 3 vuorokaudelta.')); return card; }
+  const pts = buildSamples(rows, t0, now);
+  if (!pts.length) { card.append(el('div', 'err', 'Ei havaintoja viimeiseltä 3 vuorokaudelta.')); return card; }
   const W = 720, H = 200, m = {l:34, r:10, t:10, b:24}, iw = W - m.l - m.r, ih = H - m.t - m.b;
-  const top = Math.max(30, Math.ceil(Math.max(...segs.map(s => s.v)) / 15) * 15), stepY = top > 90 ? 30 : 15;
+  const top = Math.max(30, Math.ceil(Math.max(...pts.map(s => s.v)) / 15) * 15), stepY = top > 90 ? 30 : 15;
   const X = t => m.l + (t - t0) / (now - t0) * iw, Y = v => m.t + ih - v / top * ih;
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('role', 'img');
@@ -389,11 +400,12 @@ function sectionTimeline(rows) {
     const x = X(t); add('line', {x1:x, x2:x, y1:m.t, y2:m.t + ih, stroke:'var(--grid)', 'stroke-width':1});
     add('text', {x, y:H - 6, 'text-anchor':'middle', class:'ax'}, h === 0 ? `${WD[local(t + 3600e3)[0]]} ${fmtDate.format(t + 3600e3)}` : '12:00');
   }
-  let d = '', prevEnd = null, prevV = null;
-  for (const s of segs) {
-    d += (prevEnd === s.a && prevV != null) ? `V${Y(s.v)}H${X(s.b)}` : `M${X(s.a)} ${Y(s.v)}H${X(s.b)}`;
-    prevEnd = s.b; prevV = s.v;
+  let d = '', prev = null;
+  for (const s of pts) {
+    d += (prev && s.t - prev.t <= STEP) ? `H${X(s.t)}V${Y(s.v)}` : `M${X(s.t)} ${Y(s.v)}`;
+    prev = s;
   }
+  d += prev ? `H${X(prev.t + STEP)}` : '';
   add('path', {d, fill:'none', stroke:'var(--line)', 'stroke-width':2, 'stroke-linejoin':'round'});
   const cross = add('line', {y1:m.t, y2:m.t + ih, stroke:'var(--ink-2)', 'stroke-width':1, visibility:'hidden'});
   const hit = add('rect', {x:m.l, y:m.t, width:iw, height:ih, fill:'transparent'});
@@ -401,8 +413,8 @@ function sectionTimeline(rows) {
     const b = svg.getBoundingClientRect(), px = (e.clientX - b.left) / b.width * W;
     const t = t0 + Math.min(1, Math.max(0, (px - m.l) / iw)) * (now - t0);
     cross.setAttribute('x1', X(t)); cross.setAttribute('x2', X(t)); cross.setAttribute('visibility', 'visible');
-    const s = segs.find(s => t >= s.a && t <= s.b);
-    showTip(e, fmtDateTime.format(t), s ? s.r.time : 'Ei tietoa', s ? stripEmoji(s.r.label) + (s.r.hint ? ' · ' + s.r.hint : '') : 'Suljettu tai ei havaintoa');
+    const s = pts.find(s => t >= s.t && t < s.t + STEP);
+    showTip(e, fmtDateTime.format(t), s ? s.row.time : 'Suljettu', s ? stripEmoji(s.row.label) + (s.row.hint ? ' · ' + s.row.hint : '') : `Avoinna ${OPEN_HOUR}–${CLOSE_HOUR}`);
   });
   hit.addEventListener('pointerleave', () => { cross.setAttribute('visibility', 'hidden'); hideTip(); });
   const w = el('div', 'tl-wrap'); w.append(svg); card.append(w);
@@ -417,8 +429,7 @@ function render() {
   const from = rangeDays ? now - rangeDays * 86400e3 : 0;
   const samples = buildSamples(ALL, from, now);
   const agg = aggregate(samples);
-  const hrs = [...new Set(samples.map(s => s.h))]; const h0 = hrs.length ? Math.min(...hrs) : 11, h1 = hrs.length ? Math.max(...hrs) : 19;
-  const hours = Array.from({length: h1 - h0 + 1}, (_, i) => h0 + i);
+  const hours = Array.from({length: CLOSE_HOUR - OPEN_HOUR}, (_, i) => OPEN_HOUR + i);
 
   if (DEMO) app.append(el('div', 'note', 'Esikatselu: tämä on näennäistä testidataa (make_demo.py), ei ravintolan oikeita lukuja.'));
   app.append(sectionNow(ALL));
