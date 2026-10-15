@@ -43,3 +43,4 @@ fetched_at,closed,available,time,label,color,hint,updated_at
 2026-10-14T17:00:58+00:00,True,False,Suljettu,Suljettu,,,
 2026-10-15T08:00:54+00:00,False,True,5–20 min,🟢 Vihreä,green,hyvin tilaa,2026-10-14T15:44:43.821Z
 2026-10-15T09:25:23+00:00,False,True,25–45 min,🟡 Keltainen,yellow,muutama pöytä vapaana,2026-10-15T09:20:56.914Z
+2026-10-15T11:50:33+00:00,False,True,5–20 min,🟢 Vihreä,green,hyvin tilaa,2026-10-15T11:49:52.721Z
